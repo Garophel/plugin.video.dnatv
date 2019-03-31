@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys, json, time, re
 import requests
+import m3u8
 from requests.auth import HTTPDigestAuth
 import urlparse
 
@@ -227,23 +228,42 @@ class DNATVSession(requests.Session):
 				fOut = re.sub('[<>"/\|?*]',"", fOut)
 				fOut = dlfolder + fOut.replace(':',',')
 				self.logentry(fOut)
-				response = requests.get(dlurl, stream=True)
-				downloadnotification = (recording['title'] + ' ' + startDate + ' ' + start_time)
-				if response.status_code == 200:
-					if self.testing:
-						self.logentry('download started')
-						with open(fOut, 'wb') as f:
+
+				dlroot = dlurl[:dlurl.rfind("/") + 1]
+
+				m3 = m3u8.load(dlurl)
+				segments = []
+				if m3.playlists:
+					playlist = m3.playlists[0]
+
+					segs = m3u8.load(dlroot + playlist.uri)
+					for seg in segs.segments:
+						segments.append(seg.absolute_uri)
+
+				if self.testing:
+					self.logentry('download started')
+
+					with open(fOut, 'wb') as f:
+						for seg in segments:
+							response = requests.get(seg, stream=True)
+							if response.status_code == 200:
+								for chunk in response.iter_content(1024):
+									f.write(chunk)
+
+					self.logentry('download complete')
+				else:
+					downloadnotification = (recording['title'] + ' ' + startDate + ' ' + start_time)
+					self.notify(self.Addon.getLocalizedString(30051) + ', ' + downloadnotification )
+					f = xbmcvfs.File(fOut, 'w')
+
+					for seg in segments:
+						response = requests.get(seg, stream=True)
+						if response.status_code == 200:
 							for chunk in response.iter_content(1024):
 								f.write(chunk)
-						self.logentry('download completed')
 
-					else:
-						self.notify(self.Addon.getLocalizedString(30051) + ', ' + downloadnotification )
-						f = xbmcvfs.File(fOut, 'w')
-						for chunk in response.iter_content(1024):
-							f.write(chunk)
-						f.close()
-						self.notify(self.Addon.getLocalizedString(30052)  + ', ' + downloadnotification )
+					f.close()
+					self.notify(self.Addon.getLocalizedString(30052)  + ', ' + downloadnotification )
 
 	def logentry (self, logtext):
 		if self.testing:

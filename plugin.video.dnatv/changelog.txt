@@ -1,3 +1,6 @@
+v0.3.7
+- DNATV downloads fixed.
+
 v0.3.6
 - DNATV login address changed
 
